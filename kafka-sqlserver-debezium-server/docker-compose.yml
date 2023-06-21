@@ -1,0 +1,52 @@
+services:
+  debezium:
+    image: debezium/server:2.3
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./conf:/debezium/conf
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+      - kafka
+      - sqlserver
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2019-CU20-ubuntu-20.04
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=Rootroot1.
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./sql_config:/usr/config
+    entrypoint:
+      - /usr/config/entrypoint.sh
+
+  zookeeper:
+    image: 'bitnami/zookeeper:3.8.1'
+    ports:
+      - "2181:2181"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    deploy:
+      restart_policy:
+        condition: unless-stopped
+
+  kafka:
+    image: 'bitnami/kafka:3.3'
+    ports:
+      - "9093:9093"
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,EXTERNAL://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9093
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+    depends_on:
+      - zookeeper
+    deploy:
+      restart_policy:
+        condition: unless-stopped
