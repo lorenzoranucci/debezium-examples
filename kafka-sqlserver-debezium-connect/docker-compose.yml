@@ -6,7 +6,7 @@ services:
     ports:
       - 8083:8083
     volumes:
-      - ./debezium_conf:/debezium/conf
+      - ./.devenv/debezium_conf:/debezium/conf
     restart: unless-stopped
     depends_on:
       - zookeeper
@@ -28,7 +28,7 @@ services:
     ports:
       - 1433:1433
     volumes:
-      - ./sqlserver_conf:/usr/config
+      - ./.devenv/sqlserver_conf:/usr/config
     entrypoint:
       - /usr/config/entrypoint.sh
 
@@ -85,7 +85,7 @@ services:
       restart_policy:
         condition: unless-stopped
     volumes:
-      - ./postgres_conf:/docker-entrypoint-initdb.d
+      - ./.devenv/postgres_conf:/docker-entrypoint-initdb.d
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
