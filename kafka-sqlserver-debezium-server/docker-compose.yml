@@ -19,7 +19,7 @@ services:
     ports:
       - "1433:1433"
     volumes:
-      - ./sql_config:/usr/config
+      - ./sqlserver_conf:/usr/config
     entrypoint:
       - /usr/config/entrypoint.sh
 

@@ -1,8 +1,8 @@
 services:
   debezium:
     build:
-        context: ./debezium_image
-        dockerfile: Dockerfile
+      context: ./debezium_image
+      dockerfile: Dockerfile
     ports:
       - 8083:8083
     volumes:
@@ -28,7 +28,7 @@ services:
     ports:
       - 1433:1433
     volumes:
-      - ./sql_config:/usr/config
+      - ./sqlserver_conf:/usr/config
     entrypoint:
       - /usr/config/entrypoint.sh
 
@@ -59,6 +59,33 @@ services:
     deploy:
       restart_policy:
         condition: unless-stopped
+
+  mapper:
+    build:
+      context: ./mapper
+      dockerfile: Dockerfile
+    deploy:
+      restart_policy:
+        condition: unless-stopped
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CONSUMER_GROUP_ID: foo
+      KAFKA_TOPIC: sample_prefix_.yerelservis.dbo.tblJobMaster
+      POSTGRES_DATA_SOURCE: host=external-db port=5432 user=postgres password=postgres dbname=postgres sslmode=disable
+
+  external-db:
+    image: postgres:15.3
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    deploy:
+      restart_policy:
+        condition: unless-stopped
+    volumes:
+      - ./postgres_conf:/docker-entrypoint-initdb.d
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
