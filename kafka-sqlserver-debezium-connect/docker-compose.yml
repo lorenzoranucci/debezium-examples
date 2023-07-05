@@ -1,10 +1,12 @@
 services:
   debezium:
-    image: debezium/connect:2.3
+    build:
+        context: ./debezium_image
+        dockerfile: Dockerfile
     ports:
       - 8083:8083
     volumes:
-      - ./conf:/debezium/conf
+      - ./debezium_conf:/debezium/conf
     restart: unless-stopped
     depends_on:
       - zookeeper
@@ -17,8 +19,6 @@ services:
       - OFFSET_STORAGE_TOPIC=my-connect-offsets
       - CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE=false
       - CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE=false
-    entrypoint:
-      - /debezium/conf/entrypoint.sh
 
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2019-CU20-ubuntu-20.04
