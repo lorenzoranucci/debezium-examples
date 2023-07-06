@@ -54,6 +54,7 @@ services:
       - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,EXTERNAL://:9093
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9093
       - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=false
     depends_on:
       - zookeeper
     deploy:
@@ -70,7 +71,7 @@ services:
     environment:
       KAFKA_BROKERS: kafka:9092
       KAFKA_CONSUMER_GROUP_ID: foo
-      KAFKA_TOPIC: sample_prefix_.yerelservis.dbo.tblJobMaster
+      KAFKA_TOPIC: domainA.yerelservis.dbo.tblJobMaster
       POSTGRES_DATA_SOURCE: host=external-db port=5432 user=postgres password=postgres dbname=postgres sslmode=disable
 
   external-db:

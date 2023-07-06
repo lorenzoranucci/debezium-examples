@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/segmentio/kafka-go"
@@ -30,18 +31,18 @@ type services struct {
 }
 
 type JobMasterRow struct {
-	JobId            int         `json:"JobId" db:"jobId"`
-	ServiceId        int         `json:"ServiceId" db:"serviceId"`
-	UserId           string      `json:"UserId" db:"userId"`
-	JobStartTypeId   int         `json:"JobStartTypeId" db:"jobStartTypeId"`
-	JobStartDate     interface{} `json:"JobStartDate" db:"jobStartDate"`
-	JobStartFromTime interface{} `json:"JobStartFromTime" db:"jobStartFromTime"`
-	JobState         int         `json:"JobState" db:"jobState"`
-	JobCity          int         `json:"JobCity" db:"jobCity"`
-	JobDetails       string      `json:"JobDetails" db:"jobDetails"`
-	JobQuoteTimeLast int64       `json:"JobQuoteTimeLast" db:"jobQuoteTimeLast"`
-	JobStatusId      int         `json:"JobStatusId" db:"jobStatusId"`
-	CreateDate       int64       `json:"CreateDate" db:"createDate"`
+	JobId            int64     `json:"JobId" db:"jobId"`
+	ServiceId        int64     `json:"ServiceId" db:"serviceId"`
+	UserId           string    `json:"UserId" db:"userId"`
+	JobStartTypeId   int64     `json:"JobStartTypeId" db:"jobStartTypeId"`
+	JobStartDate     time.Time `json:"JobStartDate" db:"jobStartDate"`
+	JobStartFromTime int64     `json:"JobStartFromTime" db:"jobStartFromTime"`
+	JobState         int64     `json:"JobState" db:"jobState"`
+	JobCity          int64     `json:"JobCity" db:"jobCity"`
+	JobDetails       string    `json:"JobDetails" db:"jobDetails"`
+	JobQuoteTimeLast time.Time `json:"JobQuoteTimeLast" db:"jobQuoteTimeLast"`
+	JobStatusId      int64     `json:"JobStatusId" db:"jobStatusId"`
+	CreateDate       time.Time `json:"CreateDate" db:"createDate"`
 }
 
 type Mapper interface {
