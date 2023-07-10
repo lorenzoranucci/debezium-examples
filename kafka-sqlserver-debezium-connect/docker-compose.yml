@@ -68,6 +68,7 @@ services:
     deploy:
       restart_policy:
         condition: unless-stopped
+      replicas: 20
     environment:
       KAFKA_BROKERS: kafka:9092
       KAFKA_CONSUMER_GROUP_ID: foo

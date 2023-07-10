@@ -22,6 +22,7 @@ type config struct {
 	topic              string
 	maxBytes           int
 	postgresDataSource string
+	batchSize          int
 }
 
 type services struct {
@@ -31,26 +32,27 @@ type services struct {
 }
 
 type JobMasterRow struct {
-	JobId            int64     `json:"JobId" db:"jobId"`
-	ServiceId        int64     `json:"ServiceId" db:"serviceId"`
-	UserId           string    `json:"UserId" db:"userId"`
-	JobStartTypeId   int64     `json:"JobStartTypeId" db:"jobStartTypeId"`
-	JobStartDate     time.Time `json:"JobStartDate" db:"jobStartDate"`
-	JobStartFromTime int64     `json:"JobStartFromTime" db:"jobStartFromTime"`
-	JobState         int64     `json:"JobState" db:"jobState"`
-	JobCity          int64     `json:"JobCity" db:"jobCity"`
-	JobDetails       string    `json:"JobDetails" db:"jobDetails"`
-	JobQuoteTimeLast time.Time `json:"JobQuoteTimeLast" db:"jobQuoteTimeLast"`
-	JobStatusId      int64     `json:"JobStatusId" db:"jobStatusId"`
-	CreateDate       time.Time `json:"CreateDate" db:"createDate"`
+	JobId               int64     `json:"JobId"`
+	ServiceId           int64     `json:"ServiceId"`
+	UserId              string    `json:"UserId"`
+	JobStartTypeId      int64     `json:"JobStartTypeId"`
+	JobStartDate        time.Time `json:"JobStartDate"`
+	JobStartFromTime    int64     `json:"JobStartFromTime"`
+	JobState            int64     `json:"JobState"`
+	JobCity             int64     `json:"JobCity"`
+	JobDetails          string    `json:"JobDetails"`
+	JobQuoteTimeLast    time.Time `json:"JobQuoteTimeLast"`
+	JobStatusId         int64     `json:"JobStatusId"`
+	CreateDate          time.Time `json:"CreateDate"`
+	_FromKafkaPartition int
 }
 
 type Mapper interface {
-	Map(event []byte) (JobMasterRow, error)
+	Map(event []byte, partition int) (JobMasterRow, error)
 }
 
 type Repository interface {
-	Upsert(job JobMasterRow) error
+	Upsert(jobs []JobMasterRow) error
 }
 
 func main() {
@@ -66,6 +68,7 @@ func main() {
 	defer deferF()
 
 	ctx := context.Background()
+	var currentBatch []JobMasterRow
 	for {
 		m, err := svc.kafkaReader.FetchMessage(ctx)
 		if err != nil {
@@ -74,12 +77,18 @@ func main() {
 
 		logrus.Tracef("message %v at topic/partition/offset %v/%v/%v: %s = %s\n", m.Value, m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
 
-		rowEvent, err := svc.mapper.Map(m.Value)
+		rowEvent, err := svc.mapper.Map(m.Value, m.Partition)
 		if err != nil {
 			log.Fatal("failed to map message:", err)
 		}
 
-		err = svc.repository.Upsert(rowEvent)
+		currentBatch = append(currentBatch, rowEvent)
+
+		if len(currentBatch) < c.batchSize {
+			continue
+		}
+
+		err = svc.repository.Upsert(currentBatch)
 		if err != nil {
 			log.Fatal("failed to upsert message:", err)
 		}
@@ -87,6 +96,8 @@ func main() {
 		if err := svc.kafkaReader.CommitMessages(ctx, m); err != nil {
 			log.Fatal("failed to commit messages:", err)
 		}
+
+		currentBatch = []JobMasterRow{}
 	}
 }
 
@@ -111,7 +122,7 @@ func initConfigs() (config, error) {
 	if mb != "" {
 		atoi, err := strconv.Atoi(mb)
 		if err != nil {
-			return config{}, fmt.Errorf("KAFKA_TOPIC is not set: %w", err)
+			return config{}, fmt.Errorf("KAFKA_MAX_BYTES is not a valid int: %w", err)
 		}
 		maxBytes = atoi
 	}
@@ -121,12 +132,23 @@ func initConfigs() (config, error) {
 		return config{}, fmt.Errorf("POSTGRES_DATA_SOURCE is not set")
 	}
 
+	batchSize := 1000
+	bs := os.Getenv("BATCH_SIZE")
+	if bs != "" {
+		atoi, err := strconv.Atoi(bs)
+		if err != nil {
+			return config{}, fmt.Errorf("BATCH_SIZE is not a valid int: %w", err)
+		}
+		batchSize = atoi
+	}
+
 	return config{
 		brokers:            strings.Split(kb, ","),
 		consumerGroupID:    cgid,
 		topic:              topic,
 		maxBytes:           maxBytes,
 		postgresDataSource: postgresDataSource,
+		batchSize:          batchSize,
 	}, nil
 
 }
