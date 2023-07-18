@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -17,12 +18,14 @@ import (
 )
 
 type config struct {
-	brokers            []string
-	consumerGroupID    string
-	topic              string
-	maxBytes           int
-	postgresDataSource string
-	batchSize          int
+	brokers                       []string
+	consumerGroupID               string
+	topic                         string
+	maxBytes                      int
+	postgresDataSource            string
+	batchSize                     int
+	messageFetchDeadlineInSeconds time.Duration
+	logLevel                      logrus.Level
 }
 
 type services struct {
@@ -48,56 +51,80 @@ type JobMasterRow struct {
 }
 
 type Mapper interface {
-	Map(event []byte, partition int) (JobMasterRow, error)
+	MapBatch([]kafka.Message) ([]JobMasterRow, error)
+	Map(kafka.Message) (JobMasterRow, error)
 }
 
 type Repository interface {
 	Upsert(jobs []JobMasterRow) error
 }
 
-func main() {
-	c, err := initConfigs()
-	if err != nil {
-		logrus.Fatal(err)
-	}
+var svc = services{}
+var cnf = config{}
+var deferF func()
 
-	svc, deferF, err := initServices(c)
-	if err != nil {
-		logrus.Fatal(err)
-	}
+func main() {
 	defer deferF()
 
-	ctx := context.Background()
-	var currentBatch []JobMasterRow
+	currentBatch := make([]kafka.Message, 0, cnf.batchSize)
 	for {
-		m, err := svc.kafkaReader.FetchMessage(ctx)
-		if err != nil {
-			break
+		m, err := fetchMessageWithDeadline()
+
+		isDeadlineExceeded := errors.Is(err, context.DeadlineExceeded)
+		if err != nil && !isDeadlineExceeded {
+			logrus.Fatal(err)
 		}
 
-		logrus.Tracef("message %v at topic/partition/offset %v/%v/%v: %s = %s\n", m.Value, m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
-
-		rowEvent, err := svc.mapper.Map(m.Value, m.Partition)
-		if err != nil {
-			log.Fatal("failed to map message:", err)
+		if !isDeadlineExceeded {
+			logrus.Tracef("message %s at topic/partition/offset %v/%v/%v: %s = %s\n", m.Value, m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
+			currentBatch = append(currentBatch, m)
 		}
 
-		currentBatch = append(currentBatch, rowEvent)
-
-		if len(currentBatch) < c.batchSize {
+		shouldProcessBatch := len(currentBatch) == cnf.batchSize || isDeadlineExceeded && len(currentBatch) > 0
+		if !shouldProcessBatch {
+			logrus.
+				WithField("currentBatchSize", len(currentBatch)).
+				WithField("maxBatchLength", cnf.batchSize).
+				WithField("isDeadlineExceeded", isDeadlineExceeded).
+				Debug("skipped message")
 			continue
 		}
 
-		err = svc.repository.Upsert(currentBatch)
+		jobMasterRows, err := svc.mapper.MapBatch(currentBatch)
 		if err != nil {
-			log.Fatal("failed to upsert message:", err)
+			log.Fatal("failed to map messages:", err)
 		}
 
-		if err := svc.kafkaReader.CommitMessages(ctx, m); err != nil {
+		err = svc.repository.Upsert(jobMasterRows)
+		if err != nil {
+			log.Fatal("failed to upsert messages:", err)
+		}
+
+		if err := svc.kafkaReader.CommitMessages(context.Background(), currentBatch[len(currentBatch)-1]); err != nil {
 			log.Fatal("failed to commit messages:", err)
 		}
 
-		currentBatch = []JobMasterRow{}
+		currentBatch = []kafka.Message{}
+	}
+}
+
+func fetchMessageWithDeadline() (kafka.Message, error) {
+	ctx, cf := context.WithDeadline(context.Background(), time.Now().Add(cnf.messageFetchDeadlineInSeconds))
+	defer cf()
+	return svc.kafkaReader.FetchMessage(ctx)
+}
+
+func init() {
+	var err error
+	cnf, err = initConfigs()
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	logrus.SetLevel(cnf.logLevel)
+
+	svc, deferF, err = initServices(cnf)
+	if err != nil {
+		logrus.Fatal(err)
 	}
 }
 
@@ -142,13 +169,35 @@ func initConfigs() (config, error) {
 		batchSize = atoi
 	}
 
+	messageFetchDeadlineIn := 2 * time.Second
+	d := os.Getenv("MESSAGE_FETCH_DEADLINE_IN_SECONDS")
+	if d != "" {
+		atoi, err := strconv.Atoi(d)
+		if err != nil {
+			return config{}, fmt.Errorf("MESSAGE_FETCH_DEADLINE_IN_SECONDS is not a valid int: %w", err)
+		}
+		messageFetchDeadlineIn = time.Second * time.Duration(atoi)
+	}
+
+	logLevel := logrus.TraceLevel
+	ll := os.Getenv("LOG_LEVEL")
+	if ll != "" {
+		var err error
+		logLevel, err = logrus.ParseLevel(ll)
+		if err != nil {
+			return config{}, fmt.Errorf("LOG_LEVEL is not a valid logrus level: %w", err)
+		}
+	}
+
 	return config{
-		brokers:            strings.Split(kb, ","),
-		consumerGroupID:    cgid,
-		topic:              topic,
-		maxBytes:           maxBytes,
-		postgresDataSource: postgresDataSource,
-		batchSize:          batchSize,
+		brokers:                       strings.Split(kb, ","),
+		consumerGroupID:               cgid,
+		topic:                         topic,
+		maxBytes:                      maxBytes,
+		postgresDataSource:            postgresDataSource,
+		batchSize:                     batchSize,
+		messageFetchDeadlineInSeconds: messageFetchDeadlineIn,
+		logLevel:                      logLevel,
 	}, nil
 
 }

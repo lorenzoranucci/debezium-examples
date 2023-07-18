@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/sirupsen/logrus"
 )
 
 type PostgresRepository struct {
@@ -99,6 +100,11 @@ func deduplicateJobsPickingTheLastOneOnDuplicate(input []JobMasterRow) []JobMast
 	uniqueJobs := make(map[int64]JobMasterRow)
 
 	for _, job := range input {
+		_, ok := uniqueJobs[job.JobId]
+		if ok {
+			logrus.WithField("job", job).
+				Trace("duplicate job found, picking the last one on duplicate")
+		}
 		uniqueJobs[job.JobId] = job
 	}
 
