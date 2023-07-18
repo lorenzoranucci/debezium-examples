@@ -5,18 +5,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/segmentio/kafka-go"
 )
 
 type JSONMapper struct{}
 
-func (M *JSONMapper) Map(message []byte, partition int) (JobMasterRow, error) {
+func (m *JSONMapper) MapBatch(messages []kafka.Message) ([]JobMasterRow, error) {
+	jobMasterRows := make([]JobMasterRow, 0, len(messages))
+	for _, msg := range messages {
+		jobMasterRow, err := m.Map(msg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to map messages: %w", err)
+		}
+		jobMasterRows = append(jobMasterRows, jobMasterRow)
+	}
+	return jobMasterRows, nil
+}
+
+func (m *JSONMapper) Map(message kafka.Message) (JobMasterRow, error) {
 	var jobMasterRow JobMasterRow
-	err := json.Unmarshal(message, &jobMasterRow)
+	err := json.Unmarshal(message.Value, &jobMasterRow)
 	if err != nil {
 		return jobMasterRow, fmt.Errorf("failed to unmarshal message: %w", err)
 	}
 
-	jobMasterRow._FromKafkaPartition = partition
+	jobMasterRow._FromKafkaPartition = message.Partition
 
 	return jobMasterRow, nil
 }

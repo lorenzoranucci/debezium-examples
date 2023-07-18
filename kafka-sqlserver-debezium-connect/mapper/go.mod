@@ -3,6 +3,7 @@ module github.com/homeruntech/mapper
 go 1.20
 
 require (
+	github.com/caarlos0/env/v9 v9.0.0
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/lib/pq v1.2.0
 	github.com/segmentio/kafka-go v0.4.40
